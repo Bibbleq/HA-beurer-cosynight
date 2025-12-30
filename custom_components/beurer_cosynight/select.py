@@ -31,19 +31,30 @@ async def async_setup_entry(
     username = config_entry.data[CONF_USERNAME]
     password = config_entry.data[CONF_PASSWORD]
     
-    hub = beurer_cosynight.BeurerCosyNight()
+    # Use Home Assistant's config directory for token storage
+    token_path = hass.config.path(f'.beurer_cosynight_token_{config_entry.entry_id}')
+    hub = beurer_cosynight.BeurerCosyNight(token_path=token_path)
     
     try:
         await hass.async_add_executor_job(hub.authenticate, username, password)
     except Exception as e:
-        _LOGGER.error("Could not connect to Beurer CosyNight hub: %s", e)
+        _LOGGER.error("Could not authenticate to Beurer CosyNight hub: %s", e)
         return
     
-    entities = []
-    for d in hub.list_devices():
-        entities.append(BodyZone(hub, d))
-        entities.append(FeetZone(hub, d))
-    add_entities(entities)
+    try:
+        devices = await hass.async_add_executor_job(hub.list_devices)
+        if not devices:
+            _LOGGER.warning("No devices found for Beurer CosyNight")
+            return
+        
+        entities = []
+        for d in devices:
+            entities.append(BodyZone(hub, d))
+            entities.append(FeetZone(hub, d))
+        add_entities(entities)
+        _LOGGER.info("Added %d entities for Beurer CosyNight", len(entities))
+    except Exception as e:
+        _LOGGER.error("Failed to list devices from Beurer CosyNight: %s", e)
 
 
 def setup_platform(

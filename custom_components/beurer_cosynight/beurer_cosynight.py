@@ -8,6 +8,7 @@ import requests
 
 _BASE_URL = 'https://cosynight.azurewebsites.net'
 _DATETIME_FORMAT = '%a, %d %b %Y %H:%M:%S %Z'
+_LOGGER = logging.getLogger(__name__)
 
 
 @dataclasses.dataclass
@@ -66,20 +67,28 @@ class BeurerCosyNight:
     class Error(Exception):
         pass
 
-    def __init__(self):
+    def __init__(self, token_path: str = None):
         self._token = None
-        if os.path.exists('token'):
-            with open('token') as f:
-                self._token = _Token(**json.load(f))
+        self._token_path = token_path or 'token'
+        if os.path.exists(self._token_path):
+            try:
+                with open(self._token_path) as f:
+                    self._token = _Token(**json.load(f))
+                _LOGGER.debug("Token loaded from %s", self._token_path)
+            except Exception as e:
+                _LOGGER.error("Failed to load token: %s", e)
 
     def _update_token(self, response):
         body = response.json()
         body['expires'] = body.pop('.expires')
         body['issued'] = body.pop('.issued')
         self._token = _Token(**body)
-        with open('token', 'w') as f:
-            json.dump(dataclasses.asdict(self._token), f)
-        logging.info('Token updated.')
+        try:
+            with open(self._token_path, 'w') as f:
+                json.dump(dataclasses.asdict(self._token), f)
+            _LOGGER.debug("Token updated and saved to %s", self._token_path)
+        except Exception as e:
+            _LOGGER.error("Failed to save token: %s", e)
 
     def _refresh_token(self):
         if self._token is None:
@@ -88,7 +97,7 @@ class BeurerCosyNight:
         expires = datetime.datetime.strptime(self._token.expires, _DATETIME_FORMAT)
         expires = expires.replace(tzinfo=datetime.timezone.utc)
         if datetime.datetime.now(datetime.timezone.utc) > expires:
-            logging.info('Refreshing token...')
+            _LOGGER.debug('Refreshing token...')
             r = requests.post(_BASE_URL + '/token',
                               data={
                                   'grant_type': 'refresh_token',
@@ -102,7 +111,7 @@ class BeurerCosyNight:
 
     def authenticate(self, username, password):
         if self._token is None:
-            logging.info('Requesting new token...')
+            _LOGGER.info('Requesting new token for user %s...', username)
             r = requests.post(_BASE_URL + '/token',
                               data={
                                   'grant_type': 'password',
@@ -111,12 +120,13 @@ class BeurerCosyNight:
                               })
             r.raise_for_status()
             self._update_token(r)
+            _LOGGER.info('Authentication successful')
         else:
             self._refresh_token()
 
     def get_status(self, id):
         self._refresh_token()
-        logging.info('Getting device status...')
+        _LOGGER.debug('Getting device status for device %s...', id)
         r = requests.post(_BASE_URL + '/api/v1/Device/GetStatus',
                           json={'id': id},
                           auth=_TokenAuth(self._token))
@@ -127,18 +137,20 @@ class BeurerCosyNight:
  
     def list_devices(self):
         self._refresh_token()
-        logging.info('Listing devices...')
+        _LOGGER.debug('Listing devices...')
         r = requests.get(_BASE_URL + '/api/v1/Device/List', auth=_TokenAuth(self._token))
         r.raise_for_status()
+        devices = r.json().get('devices', [])
+        _LOGGER.info('Found %d device(s)', len(devices))
         ds = []
-        for d in r.json()['devices']:
+        for d in devices:
             d['requiresUpdate'] = d.pop('requieresUpdate')
             ds.append(Device(**d))
         return ds
  
     def quickstart(self, quickstart):
         self._refresh_token()
-        logging.info('Quick starting device...')
+        _LOGGER.debug('Quick starting device...')
         r = requests.post(_BASE_URL + '/api/v1/Device/Quickstart',
                           json=dataclasses.asdict(quickstart),
                           auth=_TokenAuth(self._token))
