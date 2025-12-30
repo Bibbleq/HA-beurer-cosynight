@@ -33,8 +33,8 @@ def setup_platform(
 
     try:
         hub.authenticate(username, password)
-    except:
-        _LOGGER.error("Could not connect to AwesomeLight hub")
+    except Exception as e:
+        _LOGGER.error("Could not connect to Beurer CosyNight hub: %s", e)
         return
 
     entities = []
