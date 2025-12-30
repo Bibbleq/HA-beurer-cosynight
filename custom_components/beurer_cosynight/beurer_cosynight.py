@@ -70,6 +70,15 @@ class BeurerCosyNight:
     def __init__(self, token_path: str = None):
         self._token = None
         self._token_path = token_path or 'token'
+        # Don't load token in __init__ - defer to first use
+        self._token_loaded = False
+
+    def _load_token(self):
+        """Load token from file if not already loaded."""
+        if self._token_loaded:
+            return
+        
+        self._token_loaded = True
         if os.path.exists(self._token_path):
             try:
                 with open(self._token_path) as f:
@@ -91,6 +100,8 @@ class BeurerCosyNight:
             _LOGGER.error("Failed to save token: %s", e)
 
     def _refresh_token(self):
+        self._load_token()
+        
         if self._token is None:
             raise self.Error('Not authenticated')
 
@@ -110,6 +121,8 @@ class BeurerCosyNight:
                 r.raise_for_status()
 
     def authenticate(self, username, password):
+        self._load_token()
+        
         if self._token is None:
             _LOGGER.info('Requesting new token for user %s...', username)
             r = requests.post(_BASE_URL + '/token',

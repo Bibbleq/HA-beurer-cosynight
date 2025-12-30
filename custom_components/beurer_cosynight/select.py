@@ -33,24 +33,31 @@ async def async_setup_entry(
     
     # Use Home Assistant's config directory for token storage
     token_path = hass.config.path(f'.beurer_cosynight_token_{config_entry.entry_id}')
-    hub = beurer_cosynight.BeurerCosyNight(token_path=token_path)
+    
+    def create_and_auth():
+        hub = beurer_cosynight.BeurerCosyNight(token_path=token_path)
+        hub.authenticate(username, password)
+        return hub
     
     try:
-        await hass.async_add_executor_job(hub.authenticate, username, password)
+        hub = await hass.async_add_executor_job(create_and_auth)
     except Exception as e:
         _LOGGER.error("Could not authenticate to Beurer CosyNight hub: %s", e)
         return
     
+    def list_devs():
+        return hub.list_devices()
+    
     try:
-        devices = await hass.async_add_executor_job(hub.list_devices)
+        devices = await hass.async_add_executor_job(list_devs)
         if not devices:
             _LOGGER.warning("No devices found for Beurer CosyNight")
             return
         
         entities = []
         for d in devices:
-            entities.append(BodyZone(hub, d))
-            entities.append(FeetZone(hub, d))
+            entities.append(BodyZone(hub, d, hass))
+            entities.append(FeetZone(hub, d, hass))
         add_entities(entities)
         _LOGGER.info("Added %d entities for Beurer CosyNight", len(entities))
     except Exception as e:
@@ -83,12 +90,12 @@ def setup_platform(
 
 class _Zone(SelectEntity):
 
-    def __init__(self, hub, device, name) -> None:
+    def __init__(self, hub, device, name, hass) -> None:
         self._hub = hub
+        self._hass = hass
         self._device = device
         self._name = f'{device.name} {name}'
         self._status = None
-        self.update()
 
     @property
     def name(self) -> str:
@@ -98,41 +105,65 @@ class _Zone(SelectEntity):
     def options(self):
         return [str(x) for x in range(0, 10)]
 
+    async def async_update(self) -> None:
+        """Update the entity (async)."""
+        self._status = await self._hass.async_add_executor_job(
+            self._hub.get_status, self._device.id
+        )
+
     def update(self) -> None:
-        self._status = self._hub.get_status(self._device.id)
+        """Synchronous update - no-op for now."""
+        # This is called by Home Assistant, but we use async_update instead
+        pass
 
 
 class BodyZone(_Zone):
 
-    def __init__(self, hub, device):
-        super().__init__(hub, device, 'Body Zone')
+    def __init__(self, hub, device, hass):
+        super().__init__(hub, device, 'Body Zone', hass)
 
     @property
     def current_option(self):
+        if self._status is None:
+            return "0"
         return str(self._status.bodySetting)
 
-    def select_option(self, option: str) -> None:
-        self.update()
-        qs = beurer_cosynight.Quickstart(bodySetting=int(option),
-                                         feetSetting=self._status.feetSetting,
-                                         id=self._status.id,
-                                         timespan=3600)
-        self._hub.quickstart(qs)
+    async def async_select_option(self, option: str) -> None:
+        """Update the body zone setting."""
+        await self.async_update()
+        if self._status is None:
+            return
+        
+        qs = beurer_cosynight.Quickstart(
+            bodySetting=int(option),
+            feetSetting=self._status.feetSetting,
+            id=self._status.id,
+            timespan=3600
+        )
+        await self._hass.async_add_executor_job(self._hub.quickstart, qs)
 
 
 class FeetZone(_Zone):
 
-    def __init__(self, hub, device):
-        super().__init__(hub, device, 'Feet Zone')
+    def __init__(self, hub, device, hass):
+        super().__init__(hub, device, 'Feet Zone', hass)
 
     @property
     def current_option(self):
+        if self._status is None:
+            return "0"
         return str(self._status.feetSetting)
 
-    def select_option(self, option: str) -> None:
-        self.update()
-        qs = beurer_cosynight.Quickstart(bodySetting=self._status.bodySetting,
-                                         feetSetting=int(option),
-                                         id=self._status.id,
-                                         timespan=3600)
-        self._hub.quickstart(qs)
+    async def async_select_option(self, option: str) -> None:
+        """Update the feet zone setting."""
+        await self.async_update()
+        if self._status is None:
+            return
+        
+        qs = beurer_cosynight.Quickstart(
+            bodySetting=self._status.bodySetting,
+            feetSetting=int(option),
+            id=self._status.id,
+            timespan=3600
+        )
+        await self._hass.async_add_executor_job(self._hub.quickstart, qs)

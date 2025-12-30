@@ -27,10 +27,14 @@ class BeurerCosyNightConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             username = user_input[CONF_USERNAME]
             password = user_input[CONF_PASSWORD]
 
-            # Validate credentials
-            hub = beurer_cosynight.BeurerCosyNight()
+            # Validate credentials (run in executor to avoid blocking)
+            def create_and_authenticate():
+                hub = beurer_cosynight.BeurerCosyNight()
+                hub.authenticate(username, password)
+                return hub
+
             try:
-                await self.hass.async_add_executor_job(hub.authenticate, username, password)
+                await self.hass.async_add_executor_job(create_and_authenticate)
                 return self.async_create_entry(title=username, data=user_input)
             except Exception as e:
                 _LOGGER.error("Authentication failed: %s", e)
