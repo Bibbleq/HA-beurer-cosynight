@@ -166,6 +166,24 @@ class DeviceTimer(SensorEntity):
             return 0
         return self._status.timer
 
+    @property
+    def state(self):
+        """Return formatted time string."""
+        if self._status is None or self._status.timer == 0:
+            return "Off"
+        
+        seconds = self._status.timer
+        hours = seconds // 3600
+        minutes = (seconds % 3600) // 60
+        secs = seconds % 60
+        
+        if hours > 0:
+            return f"{hours}h {minutes}m {secs}s"
+        elif minutes > 0:
+            return f"{minutes}m {secs}s"
+        else:
+            return f"{secs}s"
+
     async def async_update(self) -> None:
         """Update the entity (async)."""
         self._status = await self._hass.async_add_executor_job(

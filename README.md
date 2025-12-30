@@ -2,7 +2,7 @@ Forked from https://github.com/damonkohler/home-assistant-beurer-cosynight
 
 # Beurer CosyNight Home Assistant Integration
 
-Minimal Home Assistant integration for Beurer CosyNight massage devices.
+Minimal Home Assistant integration for Beurer CosyNight heated matress cover.
 
 ## Features
 
