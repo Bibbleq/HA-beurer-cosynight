@@ -8,11 +8,14 @@ import voluptuous as vol
 
 import homeassistant.helpers.config_validation as cv
 from homeassistant.components.select import (PLATFORM_SCHEMA, SelectEntity)
+from homeassistant.components.button import ButtonEntity
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.components.sensor import SensorEntity, SensorDeviceClass
+from homeassistant.const import UnitOfTime
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -56,8 +59,22 @@ async def async_setup_entry(
         
         entities = []
         for d in devices:
-            entities.append(BodyZone(hub, d, hass))
-            entities.append(FeetZone(hub, d, hass))
+            body_zone = BodyZone(hub, d, hass)
+            feet_zone = FeetZone(hub, d, hass)
+            duration_timer = _Timer(hub, d, hass)
+            device_timer = DeviceTimer(hub, d, hass)
+            stop_button = StopButton(hub, d, hass)
+            
+            # Link duration timer to zones
+            body_zone._timer = duration_timer
+            feet_zone._timer = duration_timer
+            
+            entities.append(body_zone)
+            entities.append(feet_zone)
+            entities.append(duration_timer)
+            entities.append(device_timer)
+            entities.append(stop_button)
+        
         add_entities(entities)
         _LOGGER.info("Added %d entities for Beurer CosyNight", len(entities))
     except Exception as e:
@@ -83,9 +100,81 @@ def setup_platform(
 
     entities = []
     for d in hub.list_devices():
-        entities.append(BodyZone(hub, d))
-        entities.append(FeetZone(hub, d))
+        entities.append(BodyZone(hub, d, hass))
+        entities.append(FeetZone(hub, d, hass))
     add_entities(entities)
+
+
+class StopButton(ButtonEntity):
+    """Button to stop the massage session."""
+
+    def __init__(self, hub, device, hass) -> None:
+        self._hub = hub
+        self._hass = hass
+        self._device = device
+        self._name = f'{device.name} Stop'
+        self._attr_unique_id = f"beurer_cosynight_{device.id}_stop_button"
+
+    @property
+    def name(self) -> str:
+        return self._name
+
+    async def async_press(self) -> None:
+        """Stop the massage by setting both zones to 0."""
+        try:
+            # Get current status
+            status = await self._hass.async_add_executor_job(
+                self._hub.get_status, self._device.id
+            )
+            
+            # Create quickstart with both zones set to 0
+            qs = beurer_cosynight.Quickstart(
+                bodySetting=0,
+                feetSetting=0,
+                id=status.id,
+                timespan=0
+            )
+            
+            # Send to device
+            await self._hass.async_add_executor_job(self._hub.quickstart, qs)
+            _LOGGER.debug("Stopped massage session for %s", self._device.name)
+        except Exception as e:
+            _LOGGER.error("Failed to stop massage: %s", e)
+
+
+class DeviceTimer(SensorEntity):
+    """Sensor for the actual Beurer device timer (remaining time)."""
+
+    def __init__(self, hub, device, hass) -> None:
+        self._hub = hub
+        self._hass = hass
+        self._device = device
+        self._name = f'{device.name} Timer'
+        self._attr_unique_id = f"beurer_cosynight_{device.id}_device_timer"
+        self._status = None
+        self._attr_native_unit_of_measurement = UnitOfTime.SECONDS
+        self._attr_device_class = SensorDeviceClass.DURATION
+
+    @property
+    def name(self) -> str:
+        return self._name
+
+    @property
+    def native_value(self):
+        """Return the remaining time in seconds from the device."""
+        if self._status is None:
+            return 0
+        return self._status.timer
+
+    async def async_update(self) -> None:
+        """Update the entity (async)."""
+        self._status = await self._hass.async_add_executor_job(
+            self._hub.get_status, self._device.id
+        )
+
+    def update(self) -> None:
+        """Synchronous update - no-op."""
+        pass
 
 
 class _Zone(SelectEntity):
@@ -118,10 +207,52 @@ class _Zone(SelectEntity):
         pass
 
 
+class _Timer(SelectEntity):
+    """Timer duration selector."""
+
+    # Duration options in seconds
+    DURATION_OPTIONS = {
+        "30 min": 1800,
+        "1 hour": 3600,
+        "2 hours": 7200,
+        "3 hours": 10800,
+        "4 hours": 14400,
+    }
+
+    def __init__(self, hub, device, hass) -> None:
+        self._hub = hub
+        self._hass = hass
+        self._device = device
+        self._name = f'{device.name} Timer'
+        self._attr_unique_id = f"beurer_cosynight_{device.id}_timer"
+        self._current_duration = "1 hour"  # Default
+
+    @property
+    def name(self) -> str:
+        return self._name
+
+    @property
+    def current_option(self) -> str:
+        return self._current_duration
+
+    @property
+    def options(self) -> list[str]:
+        return list(self.DURATION_OPTIONS.keys())
+
+    async def async_select_option(self, option: str) -> None:
+        """Set the duration option."""
+        self._current_duration = option
+
+    def update(self) -> None:
+        """Update - no-op for timer."""
+        pass
+
+
 class BodyZone(_Zone):
 
     def __init__(self, hub, device, hass):
         super().__init__(hub, device, 'Body Zone', hass)
+        self._timer = None  # Will be set by async_setup_entry
 
     @property
     def current_option(self):
@@ -135,11 +266,17 @@ class BodyZone(_Zone):
         if self._status is None:
             return
         
+        # Get duration from timer entity if available
+        timespan = 3600  # default 1 hour
+        if self._timer:
+            duration_label = self._timer.current_option
+            timespan = _Timer.DURATION_OPTIONS.get(duration_label, 3600)
+        
         qs = beurer_cosynight.Quickstart(
             bodySetting=int(option),
             feetSetting=self._status.feetSetting,
             id=self._status.id,
-            timespan=3600
+            timespan=timespan
         )
         await self._hass.async_add_executor_job(self._hub.quickstart, qs)
 
@@ -148,6 +285,7 @@ class FeetZone(_Zone):
 
     def __init__(self, hub, device, hass):
         super().__init__(hub, device, 'Feet Zone', hass)
+        self._timer = None  # Will be set by async_setup_entry
 
     @property
     def current_option(self):
@@ -161,10 +299,16 @@ class FeetZone(_Zone):
         if self._status is None:
             return
         
+        # Get duration from timer entity if available
+        timespan = 3600  # default 1 hour
+        if self._timer:
+            duration_label = self._timer.current_option
+            timespan = _Timer.DURATION_OPTIONS.get(duration_label, 3600)
+        
         qs = beurer_cosynight.Quickstart(
             bodySetting=self._status.bodySetting,
             feetSetting=int(option),
             id=self._status.id,
-            timespan=3600
+            timespan=timespan
         )
         await self._hass.async_add_executor_job(self._hub.quickstart, qs)

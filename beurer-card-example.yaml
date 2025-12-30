@@ -1,0 +1,48 @@
+# Beurer CosyNight Card Configuration
+# Add this to your Home Assistant dashboard
+
+type: vertical-stack
+cards:
+  - type: heading
+    heading: Beurer CosyNight Bed
+    heading_style: title
+
+  - type: horizontal-stack
+    cards:
+      - type: custom:button-card
+        entity: select.morgan_s_side_body_zone
+        name: Body Zone
+        state:
+          - value: 'off'
+            color: rgb(230, 230, 230)
+          - operator: default
+            color: rgb(66, 134, 244)
+        tap_action:
+          action: more-info
+        show_state: true
+        size: 30%
+
+      - type: custom:button-card
+        entity: select.morgan_s_side_feet_zone
+        name: Feet Zone
+        state:
+          - value: 'off'
+            color: rgb(230, 230, 230)
+          - operator: default
+            color: rgb(66, 134, 244)
+        tap_action:
+          action: more-info
+        show_state: true
+        size: 30%
+
+  - type: entities
+    title: Zone Controls
+    entities:
+      - entity: select.morgan_s_side_body_zone
+        name: Body Intensity
+      - entity: select.morgan_s_side_feet_zone
+        name: Feet Intensity
+
+# Alternative: Simple card configuration
+# Replace the entity names with your actual entity IDs from Home Assistant
+# You can find them in Settings > Devices & Services > Beurer CosyNight
