@@ -96,6 +96,7 @@ class _Zone(SelectEntity):
         self._device = device
         self._name = f'{device.name} {name}'
         self._status = None
+        self._attr_unique_id = f"beurer_cosynight_{device.id}_{name.lower().replace(' ', '_')}"
 
     @property
     def name(self) -> str:
