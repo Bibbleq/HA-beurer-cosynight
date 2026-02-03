@@ -23,22 +23,8 @@ async def async_setup_entry(
     add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up sensor entities from a config entry."""
-    username = config_entry.data[CONF_USERNAME]
-    password = config_entry.data[CONF_PASSWORD]
-    
-    # Use Home Assistant's config directory for token storage
-    token_path = hass.config.path(f'.beurer_cosynight_token_{config_entry.entry_id}')
-    
-    def create_and_auth():
-        hub = beurer_cosynight.BeurerCosyNight(token_path=token_path)
-        hub.authenticate(username, password)
-        return hub
-    
-    try:
-        hub = await hass.async_add_executor_job(create_and_auth)
-    except Exception as e:
-        _LOGGER.error("Could not authenticate to Beurer CosyNight hub: %s", e)
-        return
+    # Get shared hub instance
+    hub = hass.data[DOMAIN][config_entry.entry_id]["hub"]
     
     def list_devs():
         return hub.list_devices()
@@ -131,12 +117,6 @@ class DeviceTimer(SensorEntity):
             # Update last_updated timestamp
             self._attr_extra_state_attributes["last_updated"] = dt_util.now().isoformat()
             self._attr_available = True
-        except beurer_cosynight.BeurerCosyNight.AuthenticationError as e:
-            _LOGGER.error(
-                "Authentication failed for %s: %s. Please reconfigure the integration.",
-                self._device.name, e
-            )
-            self._attr_available = False
         except Exception as e:
             _LOGGER.error("Failed to update device timer for %s: %s", self._device.name, e)
 
@@ -186,12 +166,6 @@ class LastUpdatedSensor(SensorEntity):
             # Update timestamp on successful fetch
             self._last_updated = dt_util.now()
             self._attr_available = True
-        except beurer_cosynight.BeurerCosyNight.AuthenticationError as e:
-            _LOGGER.error(
-                "Authentication failed for %s: %s. Please reconfigure the integration.",
-                self._device.name, e
-            )
-            self._attr_available = False
         except Exception as e:
             _LOGGER.error("Failed to update last_updated sensor for %s: %s", self._device.name, e)
 
