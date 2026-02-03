@@ -6,6 +6,6 @@
   "documentation": "https://github.com/Bibbleq/HA-beurer-cosynight",
   "iot_class": "cloud_polling",
   "requirements": ["voluptuous"],
-  "version": "2.0.0",
+  "version": "2.1.0",
   "config_flow": true
 }
