@@ -133,14 +133,25 @@ class _Zone(SelectEntity):
 
     def _get_timer_value(self) -> float:
         """Get timer value from the number entity if available."""
+        default_timer = 1.0  # Default 1 hour
+
         if self._config_entry_id:
             entities_key = f"{self._config_entry_id}_entities"
             device_entities = self._hass.data.get(DOMAIN, {}).get(entities_key, {}).get(self._device.id, [])
             for entity in device_entities:
                 # Look for the DurationTimer entity by checking unique_id
                 if hasattr(entity, '_attr_unique_id') and '_timer' in entity._attr_unique_id:
-                    return entity.native_value
-        return 1.0  # Default 1 hour
+                    value = entity.native_value
+                    # Ensure we have a valid numeric timer value (must be positive)
+                    if isinstance(value, (int, float)) and value > 0:
+                        return float(value)
+                    # If timer value is invalid, use default
+                    _LOGGER.warning(
+                        "Timer value %s is invalid for device %s, using default of %s hours",
+                        value, self._device.id, default_timer
+                    )
+                    return default_timer
+        return default_timer
 
     async def async_update(self) -> None:
         """Update the entity (async)."""
