@@ -129,10 +129,6 @@ class StopButton(ButtonEntity):
             model="CosyNight",
         )
 
-    @property
-    def name(self) -> str:
-        return self._attr_name
-
     async def async_press(self) -> None:
         """Stop the massage by setting both zones to 0."""
         try:
@@ -180,10 +176,6 @@ class DeviceTimer(SensorEntity):
             manufacturer="Beurer",
             model="CosyNight",
         )
-
-    @property
-    def name(self) -> str:
-        return self._attr_name
 
     @property
     def native_value(self):
@@ -244,10 +236,6 @@ class _Zone(SelectEntity):
         )
 
     @property
-    def name(self) -> str:
-        return self._attr_name
-
-    @property
     def options(self):
         return [str(x) for x in range(0, 10)]
 
@@ -294,10 +282,6 @@ class _Timer(SelectEntity):
             manufacturer="Beurer",
             model="CosyNight",
         )
-
-    @property
-    def name(self) -> str:
-        return self._attr_name
 
     @property
     def current_option(self) -> str:
