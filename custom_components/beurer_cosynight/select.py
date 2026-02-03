@@ -10,7 +10,8 @@ import voluptuous as vol
 
 import homeassistant.helpers.config_validation as cv
 from homeassistant.components.select import (PLATFORM_SCHEMA, SelectEntity)
-from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
+from homeassistant.components.number import NumberEntity, NumberMode
+from homeassistant.const import CONF_PASSWORD, CONF_USERNAME, UnitOfTime
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
@@ -149,19 +150,15 @@ class _Zone(SelectEntity):
         pass
 
 
-class _Timer(SelectEntity):
-    """Timer duration selector."""
+class _Timer(NumberEntity):
+    """Timer duration number entity (slider in hours)."""
 
     _attr_has_entity_name = True
-
-    # Duration options in seconds
-    DURATION_OPTIONS = {
-        "30 min": 1800,
-        "1 hour": 3600,
-        "2 hours": 7200,
-        "3 hours": 10800,
-        "4 hours": 14400,
-    }
+    _attr_native_min_value = 0.5
+    _attr_native_max_value = 12.0
+    _attr_native_step = 0.5
+    _attr_native_unit_of_measurement = UnitOfTime.HOURS
+    _attr_mode = NumberMode.SLIDER
 
     def __init__(self, hub, device, hass) -> None:
         self._hub = hub
@@ -169,7 +166,8 @@ class _Timer(SelectEntity):
         self._device = device
         self._attr_name = "Duration"
         self._attr_unique_id = f"beurer_cosynight_{device.id}_timer"
-        self._current_duration = "1 hour"  # Default
+        self._attr_native_value = 1.0  # Default 1 hour
+        self._attr_extra_state_attributes = {}
 
     @property
     def device_info(self) -> DeviceInfo:
@@ -182,16 +180,49 @@ class _Timer(SelectEntity):
         )
 
     @property
-    def current_option(self) -> str:
-        return self._current_duration
+    def native_value(self) -> float:
+        """Return the current timer value in hours."""
+        return self._attr_native_value
 
-    @property
-    def options(self) -> list[str]:
-        return list(self.DURATION_OPTIONS.keys())
+    async def async_set_native_value(self, value: float) -> None:
+        """Set the timer duration and apply it immediately to both zones."""
+        self._attr_native_value = value
+        
+        # Convert hours to seconds
+        timespan = int(value * 3600)
+        
+        # Get current device status
+        try:
+            status = await self._hass.async_add_executor_job(
+                self._hub.get_status, self._device.id
+            )
+            
+            # Create quickstart command with current zone values and new timer
+            qs = beurer_cosynight.Quickstart(
+                bodySetting=status.bodySetting,
+                feetSetting=status.feetSetting,
+                id=status.id,
+                timespan=timespan
+            )
+            
+            # Send the quickstart command
+            await self._hass.async_add_executor_job(self._hub.quickstart, qs)
+            
+            # Update last_updated timestamp
+            self._attr_extra_state_attributes["last_updated"] = datetime.now().isoformat()
+            
+            _LOGGER.info(
+                "Timer set to %.1f hours (%d seconds) and applied to device %s",
+                value, timespan, self._device.name
+            )
+        except Exception as e:
+            _LOGGER.error("Failed to apply timer change: %s", e)
+            raise
 
-    async def async_select_option(self, option: str) -> None:
-        """Set the duration option."""
-        self._current_duration = option
+    async def async_update(self) -> None:
+        """Update the entity (async)."""
+        # Update last_updated timestamp
+        self._attr_extra_state_attributes["last_updated"] = datetime.now().isoformat()
 
     def update(self) -> None:
         """Update - no-op for timer."""
@@ -216,11 +247,11 @@ class BodyZone(_Zone):
         if self._status is None:
             return
         
-        # Get duration from timer entity if available
+        # Get duration from timer entity if available (timer is now in hours)
         timespan = 3600  # default 1 hour
         if self._timer:
-            duration_label = self._timer.current_option
-            timespan = _Timer.DURATION_OPTIONS.get(duration_label, 3600)
+            timer_hours = self._timer.native_value
+            timespan = int(timer_hours * 3600)  # Convert hours to seconds
         
         qs = beurer_cosynight.Quickstart(
             bodySetting=int(option),
@@ -249,11 +280,11 @@ class FeetZone(_Zone):
         if self._status is None:
             return
         
-        # Get duration from timer entity if available
+        # Get duration from timer entity if available (timer is now in hours)
         timespan = 3600  # default 1 hour
         if self._timer:
-            duration_label = self._timer.current_option
-            timespan = _Timer.DURATION_OPTIONS.get(duration_label, 3600)
+            timer_hours = self._timer.native_value
+            timespan = int(timer_hours * 3600)  # Convert hours to seconds
         
         qs = beurer_cosynight.Quickstart(
             bodySetting=self._status.bodySetting,

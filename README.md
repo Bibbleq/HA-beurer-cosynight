@@ -9,7 +9,7 @@ Home Assistant integration for Beurer CosyNight heated mattress cover with devic
 ### Device Controls
 - **Body Zone** - Control body zone heating intensity (0-9 levels)
 - **Feet Zone** - Control feet zone heating intensity (0-9 levels)
-- **Duration** - Set heating duration (30 min, 1-4 hours)
+- **Duration** - Set heating duration with a slider (0.5-12 hours in 0.5-hour increments)
 - **Remaining Time** - Sensor showing remaining heating time
 - **Stop Button** - Instantly stop all heating
 
@@ -17,6 +17,8 @@ Home Assistant integration for Beurer CosyNight heated mattress cover with devic
 - Add Beurer CosyNight devices via Home Assistant UI
 - All entities grouped under a single device per blanket
 - No YAML configuration required
+- Timer changes apply immediately to both heating zones
+- Last poll timestamp visible in device entity attributes
 
 ## Installation
 
@@ -47,6 +49,12 @@ This integration is a fork and derivative work, building upon the contributions 
 
 - **Original Author**: [Damon Kohler](https://github.com/damonkohler) - [home-assistant-beurer-cosynight](https://github.com/damonkohler/home-assistant-beurer-cosynight)
 - **GUI Setup & Timer Controls**: [Mpercy-Git](https://github.com/Mpercy-Git) - [home-assistant-beurer-cosynight](https://github.com/Mpercy-Git/home-assistant-beurer-cosynight)
+
+### What's New in v2.1.0
+- **Flexible Timer Slider**: Duration control now uses a slider allowing custom values from 0.5 to 12 hours in 0.5-hour increments
+- **Immediate Timer Application**: Timer changes now apply instantly to both zones without requiring zone temperature adjustments
+- **Enhanced Visibility**: Last poll timestamp is now prominently displayed in entity attributes for all entities
+- All previous v2.0.0 features included
 
 ### What's New in v2.0.0
 - Entities grouped under device (improved Home Assistant UI experience)
