@@ -59,9 +59,7 @@ async def async_setup_entry(
             entities.append(device_timer)
             
             # Store sensor entity reference for RefreshButton
-            if d.id not in hass.data[DOMAIN][entities_key]:
-                hass.data[DOMAIN][entities_key][d.id] = []
-            hass.data[DOMAIN][entities_key][d.id].append(device_timer)
+            hass.data[DOMAIN][entities_key].setdefault(d.id, []).append(device_timer)
         
         add_entities(entities)
         _LOGGER.info("Added %d sensor entities for Beurer CosyNight", len(entities))

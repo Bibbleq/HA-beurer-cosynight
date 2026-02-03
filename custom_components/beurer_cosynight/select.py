@@ -76,7 +76,7 @@ async def async_setup_entry(
             entities.append(duration_timer)
             
             # Store entity references for RefreshButton
-            hass.data[DOMAIN][entities_key][d.id] = [body_zone, feet_zone, duration_timer]
+            hass.data[DOMAIN][entities_key].setdefault(d.id, []).extend([body_zone, feet_zone, duration_timer])
         
         add_entities(entities)
         _LOGGER.info("Added %d select entities for Beurer CosyNight", len(entities))
