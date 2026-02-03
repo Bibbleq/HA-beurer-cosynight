@@ -85,6 +85,7 @@ class DeviceTimer(SensorEntity):
         self._attr_native_unit_of_measurement = UnitOfTime.SECONDS
         self._attr_device_class = SensorDeviceClass.DURATION
         self._attr_extra_state_attributes = {}
+        self._attr_available = True
 
     @property
     def device_info(self) -> DeviceInfo:
@@ -129,6 +130,13 @@ class DeviceTimer(SensorEntity):
             )
             # Update last_updated timestamp
             self._attr_extra_state_attributes["last_updated"] = dt_util.now().isoformat()
+            self._attr_available = True
+        except beurer_cosynight.BeurerCosyNight.AuthenticationError as e:
+            _LOGGER.error(
+                "Authentication failed for %s: %s. Please reconfigure the integration.",
+                self._device.name, e
+            )
+            self._attr_available = False
         except Exception as e:
             _LOGGER.error("Failed to update device timer for %s: %s", self._device.name, e)
 
@@ -151,6 +159,7 @@ class LastUpdatedSensor(SensorEntity):
         self._attr_name = "Last Updated"
         self._attr_unique_id = f"beurer_cosynight_{device.id}_last_updated"
         self._last_updated = None
+        self._attr_available = True
 
     @property
     def device_info(self) -> DeviceInfo:
@@ -176,6 +185,13 @@ class LastUpdatedSensor(SensorEntity):
             )
             # Update timestamp on successful fetch
             self._last_updated = dt_util.now()
+            self._attr_available = True
+        except beurer_cosynight.BeurerCosyNight.AuthenticationError as e:
+            _LOGGER.error(
+                "Authentication failed for %s: %s. Please reconfigure the integration.",
+                self._device.name, e
+            )
+            self._attr_available = False
         except Exception as e:
             _LOGGER.error("Failed to update last_updated sensor for %s: %s", self._device.name, e)
 

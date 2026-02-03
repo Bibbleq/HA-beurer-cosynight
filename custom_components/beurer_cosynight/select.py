@@ -115,6 +115,7 @@ class _Zone(SelectEntity):
         self._attr_unique_id = f"beurer_cosynight_{device.id}_{name.lower().replace(' ', '_')}"
         self._attr_extra_state_attributes = {}
         self._config_entry_id = config_entry_id
+        self._attr_available = True
 
     @property
     def device_info(self) -> DeviceInfo:
@@ -143,11 +144,21 @@ class _Zone(SelectEntity):
 
     async def async_update(self) -> None:
         """Update the entity (async)."""
-        self._status = await self._hass.async_add_executor_job(
-            self._hub.get_status, self._device.id
-        )
-        # Update last_updated timestamp
-        self._attr_extra_state_attributes["last_updated"] = dt_util.now().isoformat()
+        try:
+            self._status = await self._hass.async_add_executor_job(
+                self._hub.get_status, self._device.id
+            )
+            # Update last_updated timestamp
+            self._attr_extra_state_attributes["last_updated"] = dt_util.now().isoformat()
+            self._attr_available = True
+        except beurer_cosynight.BeurerCosyNight.AuthenticationError as e:
+            _LOGGER.error(
+                "Authentication failed for %s: %s. Please reconfigure the integration.",
+                self._device.name, e
+            )
+            self._attr_available = False
+        except Exception as e:
+            _LOGGER.error("Failed to update zone for %s: %s", self._device.name, e)
 
     def update(self) -> None:
         """Synchronous update - no-op for now."""
@@ -182,7 +193,15 @@ class BodyZone(_Zone):
             id=self._status.id,
             timespan=timespan
         )
-        await self._hass.async_add_executor_job(self._hub.quickstart, qs)
+        try:
+            await self._hass.async_add_executor_job(self._hub.quickstart, qs)
+        except beurer_cosynight.BeurerCosyNight.AuthenticationError as e:
+            _LOGGER.error(
+                "Authentication failed for %s: %s. Please reconfigure the integration.",
+                self._device.name, e
+            )
+            self._attr_available = False
+            raise
 
 
 class FeetZone(_Zone):
@@ -212,4 +231,12 @@ class FeetZone(_Zone):
             id=self._status.id,
             timespan=timespan
         )
-        await self._hass.async_add_executor_job(self._hub.quickstart, qs)
+        try:
+            await self._hass.async_add_executor_job(self._hub.quickstart, qs)
+        except beurer_cosynight.BeurerCosyNight.AuthenticationError as e:
+            _LOGGER.error(
+                "Authentication failed for %s: %s. Please reconfigure the integration.",
+                self._device.name, e
+            )
+            self._attr_available = False
+            raise

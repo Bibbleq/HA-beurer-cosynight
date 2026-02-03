@@ -67,6 +67,18 @@ class BeurerCosyNight:
     class Error(Exception):
         pass
 
+    class AuthenticationError(Error):
+        """Raised when authentication fails (e.g., 401 Unauthorized)."""
+        pass
+
+    def _check_response_auth(self, response):
+        """Check response for authentication errors and raise AuthenticationError if needed."""
+        if response.status_code == 401:
+            self._token = None  # Clear invalid token
+            raise self.AuthenticationError(
+                f"Authentication failed: {response.status_code} {response.reason} for url: {response.url}"
+            )
+
     def __init__(self, token_path: str = None):
         self._token = None
         self._token_path = token_path or 'token'
@@ -116,6 +128,11 @@ class BeurerCosyNight:
                               })
             if r.status_code == requests.codes.ok:
                 self._update_token(r)
+            elif r.status_code == 401:
+                self._token = None
+                raise self.AuthenticationError(
+                    "Token refresh failed: credentials may have changed or expired"
+                )
             else:
                 self._token = None
                 r.raise_for_status()
@@ -131,6 +148,10 @@ class BeurerCosyNight:
                                   'username': username,
                                   'password': password
                               })
+            if r.status_code == 401:
+                raise self.AuthenticationError(
+                    "Authentication failed: invalid username or password"
+                )
             r.raise_for_status()
             self._update_token(r)
             _LOGGER.info('Authentication successful')
@@ -143,6 +164,7 @@ class BeurerCosyNight:
         r = requests.post(_BASE_URL + '/api/v1/Device/GetStatus',
                           json={'id': id},
                           auth=_TokenAuth(self._token))
+        self._check_response_auth(r)
         r.raise_for_status()
         body = r.json()
         body['requiresUpdate'] = body.pop('requieresUpdate')
@@ -152,6 +174,7 @@ class BeurerCosyNight:
         self._refresh_token()
         _LOGGER.debug('Listing devices...')
         r = requests.get(_BASE_URL + '/api/v1/Device/List', auth=_TokenAuth(self._token))
+        self._check_response_auth(r)
         r.raise_for_status()
         devices = r.json().get('devices', [])
         _LOGGER.info('Found %d device(s)', len(devices))
@@ -167,5 +190,6 @@ class BeurerCosyNight:
         r = requests.post(_BASE_URL + '/api/v1/Device/Quickstart',
                           json=dataclasses.asdict(quickstart),
                           auth=_TokenAuth(self._token))
+        self._check_response_auth(r)
         r.raise_for_status()
 
