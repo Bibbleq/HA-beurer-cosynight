@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime
 
 from . import beurer_cosynight
 from .const import DOMAIN
@@ -13,6 +12,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.device_registry import DeviceInfo
+from homeassistant.util import dt as dt_util
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -56,10 +56,12 @@ async def async_setup_entry(
         entities = []
         for d in devices:
             device_timer = DeviceTimer(hub, d, hass)
+            last_updated = LastUpdatedSensor(hub, d, hass)
             entities.append(device_timer)
+            entities.append(last_updated)
             
             # Store sensor entity reference for RefreshButton
-            hass.data[DOMAIN][entities_key].setdefault(d.id, []).append(device_timer)
+            hass.data[DOMAIN][entities_key].setdefault(d.id, []).extend([device_timer, last_updated])
         
         add_entities(entities)
         _LOGGER.info("Added %d sensor entities for Beurer CosyNight", len(entities))
@@ -126,9 +128,56 @@ class DeviceTimer(SensorEntity):
                 self._hub.get_status, self._device.id
             )
             # Update last_updated timestamp
-            self._attr_extra_state_attributes["last_updated"] = datetime.now().isoformat()
+            self._attr_extra_state_attributes["last_updated"] = dt_util.now().isoformat()
         except Exception as e:
             _LOGGER.error("Failed to update device timer for %s: %s", self._device.name, e)
+
+    def update(self) -> None:
+        """Synchronous update - no-op."""
+        pass
+
+
+class LastUpdatedSensor(SensorEntity):
+    """Sensor for showing when the device status was last updated."""
+
+    _attr_has_entity_name = True
+    _attr_should_poll = True  # Enable automatic polling
+    _attr_device_class = SensorDeviceClass.TIMESTAMP
+
+    def __init__(self, hub, device, hass) -> None:
+        self._hub = hub
+        self._hass = hass
+        self._device = device
+        self._attr_name = "Last Updated"
+        self._attr_unique_id = f"beurer_cosynight_{device.id}_last_updated"
+        self._last_updated = None
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        """Return device info to link this entity to a device."""
+        return DeviceInfo(
+            identifiers={(DOMAIN, self._device.id)},
+            name=self._device.name,
+            manufacturer="Beurer",
+            model="CosyNight",
+        )
+
+    @property
+    def native_value(self):
+        """Return the last updated timestamp."""
+        return self._last_updated
+
+    async def async_update(self) -> None:
+        """Update the entity (async)."""
+        try:
+            # Fetch status to verify connectivity
+            await self._hass.async_add_executor_job(
+                self._hub.get_status, self._device.id
+            )
+            # Update timestamp on successful fetch
+            self._last_updated = dt_util.now()
+        except Exception as e:
+            _LOGGER.error("Failed to update last_updated sensor for %s: %s", self._device.name, e)
 
     def update(self) -> None:
         """Synchronous update - no-op."""
