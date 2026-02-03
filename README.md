@@ -1,6 +1,6 @@
 # Beurer CosyNight Home Assistant Integration
 
-[![HACS](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://github.com/hacs/integration)
+[![HACS](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://github.com/Bibbleq/HA-beurer-cosynight)
 
 Home Assistant integration for Beurer CosyNight heated mattress cover with device grouping and comprehensive controls.
 
