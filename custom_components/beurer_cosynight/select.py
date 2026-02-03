@@ -4,6 +4,7 @@ from __future__ import annotations
 import logging
 
 from . import beurer_cosynight
+from .const import DOMAIN
 import voluptuous as vol
 
 import homeassistant.helpers.config_validation as cv
@@ -16,6 +17,7 @@ from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.components.sensor import SensorEntity, SensorDeviceClass
 from homeassistant.const import UnitOfTime
+from homeassistant.helpers.device_registry import DeviceInfo
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -108,16 +110,28 @@ def setup_platform(
 class StopButton(ButtonEntity):
     """Button to stop the massage session."""
 
+    _attr_has_entity_name = True
+
     def __init__(self, hub, device, hass) -> None:
         self._hub = hub
         self._hass = hass
         self._device = device
-        self._name = f'{device.name} Stop'
+        self._attr_name = "Stop"
         self._attr_unique_id = f"beurer_cosynight_{device.id}_stop_button"
 
     @property
+    def device_info(self) -> DeviceInfo:
+        """Return device info to link this entity to a device."""
+        return DeviceInfo(
+            identifiers={(DOMAIN, self._device.id)},
+            name=self._device.name,
+            manufacturer="Beurer",
+            model="CosyNight",
+        )
+
+    @property
     def name(self) -> str:
-        return self._name
+        return self._attr_name
 
     async def async_press(self) -> None:
         """Stop the massage by setting both zones to 0."""
@@ -145,19 +159,31 @@ class StopButton(ButtonEntity):
 class DeviceTimer(SensorEntity):
     """Sensor for the actual Beurer device timer (remaining time)."""
 
+    _attr_has_entity_name = True
+
     def __init__(self, hub, device, hass) -> None:
         self._hub = hub
         self._hass = hass
         self._device = device
-        self._name = f'{device.name} Timer'
+        self._attr_name = "Remaining Time"
         self._attr_unique_id = f"beurer_cosynight_{device.id}_device_timer"
         self._status = None
         self._attr_native_unit_of_measurement = UnitOfTime.SECONDS
         self._attr_device_class = SensorDeviceClass.DURATION
 
     @property
+    def device_info(self) -> DeviceInfo:
+        """Return device info to link this entity to a device."""
+        return DeviceInfo(
+            identifiers={(DOMAIN, self._device.id)},
+            name=self._device.name,
+            manufacturer="Beurer",
+            model="CosyNight",
+        )
+
+    @property
     def name(self) -> str:
-        return self._name
+        return self._attr_name
 
     @property
     def native_value(self):
@@ -197,17 +223,29 @@ class DeviceTimer(SensorEntity):
 
 class _Zone(SelectEntity):
 
+    _attr_has_entity_name = True
+
     def __init__(self, hub, device, name, hass) -> None:
         self._hub = hub
         self._hass = hass
         self._device = device
-        self._name = f'{device.name} {name}'
+        self._attr_name = name
         self._status = None
         self._attr_unique_id = f"beurer_cosynight_{device.id}_{name.lower().replace(' ', '_')}"
 
     @property
+    def device_info(self) -> DeviceInfo:
+        """Return device info to link this entity to a device."""
+        return DeviceInfo(
+            identifiers={(DOMAIN, self._device.id)},
+            name=self._device.name,
+            manufacturer="Beurer",
+            model="CosyNight",
+        )
+
+    @property
     def name(self) -> str:
-        return self._name
+        return self._attr_name
 
     @property
     def options(self):
@@ -228,6 +266,8 @@ class _Zone(SelectEntity):
 class _Timer(SelectEntity):
     """Timer duration selector."""
 
+    _attr_has_entity_name = True
+
     # Duration options in seconds
     DURATION_OPTIONS = {
         "30 min": 1800,
@@ -241,13 +281,23 @@ class _Timer(SelectEntity):
         self._hub = hub
         self._hass = hass
         self._device = device
-        self._name = f'{device.name} Timer'
+        self._attr_name = "Duration"
         self._attr_unique_id = f"beurer_cosynight_{device.id}_timer"
         self._current_duration = "1 hour"  # Default
 
     @property
+    def device_info(self) -> DeviceInfo:
+        """Return device info to link this entity to a device."""
+        return DeviceInfo(
+            identifiers={(DOMAIN, self._device.id)},
+            name=self._device.name,
+            manufacturer="Beurer",
+            model="CosyNight",
+        )
+
+    @property
     def name(self) -> str:
-        return self._name
+        return self._attr_name
 
     @property
     def current_option(self) -> str:
