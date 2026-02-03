@@ -167,7 +167,7 @@ class _Timer(NumberEntity):
         self._attr_name = "Duration"
         self._attr_unique_id = f"beurer_cosynight_{device.id}_timer"
         self._attr_native_value = 1.0  # Default 1 hour
-        self._attr_extra_state_attributes = {}
+        self._attr_extra_state_attributes = {"last_updated": datetime.now().isoformat()}
 
     @property
     def device_info(self) -> DeviceInfo:
@@ -218,11 +218,6 @@ class _Timer(NumberEntity):
         except Exception as e:
             _LOGGER.error("Failed to apply timer change: %s", e)
             raise
-
-    async def async_update(self) -> None:
-        """Update the entity (async)."""
-        # Update last_updated timestamp
-        self._attr_extra_state_attributes["last_updated"] = datetime.now().isoformat()
 
     def update(self) -> None:
         """Update - no-op for timer."""
