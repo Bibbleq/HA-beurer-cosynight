@@ -46,6 +46,7 @@ See [beurer-card-example.yaml](beurer-card-example.yaml) for an example Lovelace
 This integration is a fork and derivative work, building upon the contributions of previous developers:
 
 - **Original Author**: [Damon Kohler](https://github.com/damonkohler) - [home-assistant-beurer-cosynight](https://github.com/damonkohler/home-assistant-beurer-cosynight)
+- **GUI Setup & Timer Controls**: [Mpercy-Git](https://github.com/Mpercy-Git) - [home-assistant-beurer-cosynight](https://github.com/Mpercy-Git/home-assistant-beurer-cosynight)
 
 ### What's New in v2.0.0
 - Entities grouped under device (improved Home Assistant UI experience)
