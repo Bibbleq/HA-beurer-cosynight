@@ -193,7 +193,15 @@ class BodyZone(_Zone):
             id=self._status.id,
             timespan=timespan
         )
-        await self._hass.async_add_executor_job(self._hub.quickstart, qs)
+        try:
+            await self._hass.async_add_executor_job(self._hub.quickstart, qs)
+        except beurer_cosynight.BeurerCosyNight.AuthenticationError as e:
+            _LOGGER.error(
+                "Authentication failed for %s: %s. Please reconfigure the integration.",
+                self._device.name, e
+            )
+            self._attr_available = False
+            raise
 
 
 class FeetZone(_Zone):
@@ -223,4 +231,12 @@ class FeetZone(_Zone):
             id=self._status.id,
             timespan=timespan
         )
-        await self._hass.async_add_executor_job(self._hub.quickstart, qs)
+        try:
+            await self._hass.async_add_executor_job(self._hub.quickstart, qs)
+        except beurer_cosynight.BeurerCosyNight.AuthenticationError as e:
+            _LOGGER.error(
+                "Authentication failed for %s: %s. Please reconfigure the integration.",
+                self._device.name, e
+            )
+            self._attr_available = False
+            raise
