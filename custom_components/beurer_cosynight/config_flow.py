@@ -36,9 +36,12 @@ class BeurerCosyNightConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             try:
                 await self.hass.async_add_executor_job(create_and_authenticate)
                 return self.async_create_entry(title=username, data=user_input)
+            except beurer_cosynight.BeurerCosyNight.AuthenticationError:
+                _LOGGER.error("Authentication failed: invalid credentials")
+                errors["base"] = "invalid_auth"
             except Exception as e:
                 _LOGGER.error("Authentication failed: %s", e)
-                errors["base"] = "invalid_auth"
+                errors["base"] = "cannot_connect"
 
         data_schema = vol.Schema(
             {
@@ -53,5 +56,56 @@ class BeurerCosyNightConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             errors=errors,
             description_placeholders={
                 "error_details": "Check username and password"
+            }
+        )
+
+    async def async_step_reconfigure(self, user_input=None) -> FlowResult:
+        """Handle reconfiguration of credentials."""
+        errors = {}
+        reconfigure_entry = self._get_reconfigure_entry()
+
+        if user_input is not None:
+            username = user_input[CONF_USERNAME]
+            password = user_input[CONF_PASSWORD]
+
+            # Validate credentials (run in executor to avoid blocking)
+            def create_and_authenticate():
+                hub = beurer_cosynight.BeurerCosyNight()
+                hub.authenticate(username, password)
+                return hub
+
+            try:
+                await self.hass.async_add_executor_job(create_and_authenticate)
+                
+                # Update the existing entry with new credentials
+                return self.async_update_reload_and_abort(
+                    reconfigure_entry,
+                    data={**reconfigure_entry.data, **user_input},
+                    title=username,
+                )
+            except beurer_cosynight.BeurerCosyNight.AuthenticationError:
+                _LOGGER.error("Reconfiguration failed: invalid credentials")
+                errors["base"] = "invalid_auth"
+            except Exception as e:
+                _LOGGER.error("Reconfiguration failed: %s", e)
+                errors["base"] = "cannot_connect"
+
+        # Pre-fill the username from existing config
+        data_schema = vol.Schema(
+            {
+                vol.Required(
+                    CONF_USERNAME, 
+                    default=reconfigure_entry.data.get(CONF_USERNAME, "")
+                ): str,
+                vol.Required(CONF_PASSWORD): str,
+            }
+        )
+
+        return self.async_show_form(
+            step_id="reconfigure",
+            data_schema=data_schema,
+            errors=errors,
+            description_placeholders={
+                "error_details": "Update your username and password"
             }
         )

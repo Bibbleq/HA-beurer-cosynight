@@ -85,6 +85,7 @@ class DurationTimer(NumberEntity):
         self._attr_unique_id = f"beurer_cosynight_{device.id}_timer"
         self._attr_native_value = 1.0  # Default 1 hour
         self._attr_extra_state_attributes = {"last_updated": dt_util.now().isoformat()}
+        self._attr_available = True
 
     @property
     def device_info(self) -> DeviceInfo:
@@ -127,11 +128,19 @@ class DurationTimer(NumberEntity):
             
             # Update last_updated timestamp
             self._attr_extra_state_attributes["last_updated"] = dt_util.now().isoformat()
+            self._attr_available = True
             
             _LOGGER.info(
                 "Timer set to %.1f hours (%d seconds) and applied to device %s",
                 value, timespan, self._device.name
             )
+        except beurer_cosynight.BeurerCosyNight.AuthenticationError as e:
+            _LOGGER.error(
+                "Authentication failed for %s: %s. Please reconfigure the integration.",
+                self._device.name, e
+            )
+            self._attr_available = False
+            raise
         except Exception as e:
             _LOGGER.error("Failed to apply timer change: %s", e)
             raise

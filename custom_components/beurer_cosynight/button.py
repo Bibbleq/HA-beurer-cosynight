@@ -73,6 +73,7 @@ class StopButton(ButtonEntity):
         self._device = device
         self._attr_name = "Stop"
         self._attr_unique_id = f"beurer_cosynight_{device.id}_stop_button"
+        self._attr_available = True
 
     @property
     def device_info(self) -> DeviceInfo:
@@ -103,6 +104,13 @@ class StopButton(ButtonEntity):
             # Send to device
             await self._hass.async_add_executor_job(self._hub.quickstart, qs)
             _LOGGER.debug("Stopped massage session for %s", self._device.name)
+            self._attr_available = True
+        except beurer_cosynight.BeurerCosyNight.AuthenticationError as e:
+            _LOGGER.error(
+                "Authentication failed for %s: %s. Please reconfigure the integration.",
+                self._device.name, e
+            )
+            self._attr_available = False
         except Exception as e:
             _LOGGER.error("Failed to stop massage: %s", e)
 
