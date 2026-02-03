@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime
 
 from . import beurer_cosynight
 from .const import DOMAIN
@@ -9,14 +10,11 @@ import voluptuous as vol
 
 import homeassistant.helpers.config_validation as cv
 from homeassistant.components.select import (PLATFORM_SCHEMA, SelectEntity)
-from homeassistant.components.button import ButtonEntity
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.components.sensor import SensorEntity, SensorDeviceClass
-from homeassistant.const import UnitOfTime
 from homeassistant.helpers.device_registry import DeviceInfo
 
 _LOGGER = logging.getLogger(__name__)
@@ -59,13 +57,15 @@ async def async_setup_entry(
             _LOGGER.warning("No devices found for Beurer CosyNight")
             return
         
+        # Initialize entity storage for RefreshButton coordination
+        entities_key = f"{config_entry.entry_id}_entities"
+        hass.data[DOMAIN].setdefault(entities_key, {})
+        
         entities = []
         for d in devices:
             body_zone = BodyZone(hub, d, hass)
             feet_zone = FeetZone(hub, d, hass)
             duration_timer = _Timer(hub, d, hass)
-            device_timer = DeviceTimer(hub, d, hass)
-            stop_button = StopButton(hub, d, hass)
             
             # Link duration timer to zones
             body_zone._timer = duration_timer
@@ -74,11 +74,12 @@ async def async_setup_entry(
             entities.append(body_zone)
             entities.append(feet_zone)
             entities.append(duration_timer)
-            entities.append(device_timer)
-            entities.append(stop_button)
+            
+            # Store entity references for RefreshButton
+            hass.data[DOMAIN][entities_key][d.id] = [body_zone, feet_zone, duration_timer]
         
         add_entities(entities)
-        _LOGGER.info("Added %d entities for Beurer CosyNight", len(entities))
+        _LOGGER.info("Added %d select entities for Beurer CosyNight", len(entities))
     except Exception as e:
         _LOGGER.error("Failed to list devices from Beurer CosyNight: %s", e)
 
@@ -107,112 +108,6 @@ def setup_platform(
     add_entities(entities)
 
 
-class StopButton(ButtonEntity):
-    """Button to stop the massage session."""
-
-    _attr_has_entity_name = True
-
-    def __init__(self, hub, device, hass) -> None:
-        self._hub = hub
-        self._hass = hass
-        self._device = device
-        self._attr_name = "Stop"
-        self._attr_unique_id = f"beurer_cosynight_{device.id}_stop_button"
-
-    @property
-    def device_info(self) -> DeviceInfo:
-        """Return device info to link this entity to a device."""
-        return DeviceInfo(
-            identifiers={(DOMAIN, self._device.id)},
-            name=self._device.name,
-            manufacturer="Beurer",
-            model="CosyNight",
-        )
-
-    async def async_press(self) -> None:
-        """Stop the massage by setting both zones to 0."""
-        try:
-            # Get current status
-            status = await self._hass.async_add_executor_job(
-                self._hub.get_status, self._device.id
-            )
-            
-            # Create quickstart with both zones set to 0
-            qs = beurer_cosynight.Quickstart(
-                bodySetting=0,
-                feetSetting=0,
-                id=status.id,
-                timespan=0
-            )
-            
-            # Send to device
-            await self._hass.async_add_executor_job(self._hub.quickstart, qs)
-            _LOGGER.debug("Stopped massage session for %s", self._device.name)
-        except Exception as e:
-            _LOGGER.error("Failed to stop massage: %s", e)
-
-
-class DeviceTimer(SensorEntity):
-    """Sensor for the actual Beurer device timer (remaining time)."""
-
-    _attr_has_entity_name = True
-
-    def __init__(self, hub, device, hass) -> None:
-        self._hub = hub
-        self._hass = hass
-        self._device = device
-        self._attr_name = "Remaining Time"
-        self._attr_unique_id = f"beurer_cosynight_{device.id}_device_timer"
-        self._status = None
-        self._attr_native_unit_of_measurement = UnitOfTime.SECONDS
-        self._attr_device_class = SensorDeviceClass.DURATION
-
-    @property
-    def device_info(self) -> DeviceInfo:
-        """Return device info to link this entity to a device."""
-        return DeviceInfo(
-            identifiers={(DOMAIN, self._device.id)},
-            name=self._device.name,
-            manufacturer="Beurer",
-            model="CosyNight",
-        )
-
-    @property
-    def native_value(self):
-        """Return the remaining time in seconds from the device."""
-        if self._status is None:
-            return 0
-        return self._status.timer
-
-    @property
-    def state(self):
-        """Return formatted time string."""
-        if self._status is None or self._status.timer == 0:
-            return "Off"
-        
-        seconds = self._status.timer
-        hours = seconds // 3600
-        minutes = (seconds % 3600) // 60
-        secs = seconds % 60
-        
-        if hours > 0:
-            return f"{hours}h {minutes}m {secs}s"
-        elif minutes > 0:
-            return f"{minutes}m {secs}s"
-        else:
-            return f"{secs}s"
-
-    async def async_update(self) -> None:
-        """Update the entity (async)."""
-        self._status = await self._hass.async_add_executor_job(
-            self._hub.get_status, self._device.id
-        )
-
-    def update(self) -> None:
-        """Synchronous update - no-op."""
-        pass
-
-
 class _Zone(SelectEntity):
 
     _attr_has_entity_name = True
@@ -224,6 +119,7 @@ class _Zone(SelectEntity):
         self._attr_name = name
         self._status = None
         self._attr_unique_id = f"beurer_cosynight_{device.id}_{name.lower().replace(' ', '_')}"
+        self._attr_extra_state_attributes = {}
 
     @property
     def device_info(self) -> DeviceInfo:
@@ -244,6 +140,8 @@ class _Zone(SelectEntity):
         self._status = await self._hass.async_add_executor_job(
             self._hub.get_status, self._device.id
         )
+        # Update last_updated timestamp
+        self._attr_extra_state_attributes["last_updated"] = datetime.now().isoformat()
 
     def update(self) -> None:
         """Synchronous update - no-op for now."""
