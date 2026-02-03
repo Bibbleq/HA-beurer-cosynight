@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime
 
 from . import beurer_cosynight
 from .const import DOMAIN
@@ -16,6 +15,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.device_registry import DeviceInfo
+from homeassistant.util import dt as dt_util
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -106,7 +106,7 @@ class _Zone(SelectEntity):
 
     _attr_has_entity_name = True
 
-    def __init__(self, hub, device, name, hass) -> None:
+    def __init__(self, hub, device, name, hass, config_entry_id=None) -> None:
         self._hub = hub
         self._hass = hass
         self._device = device
@@ -114,6 +114,7 @@ class _Zone(SelectEntity):
         self._status = None
         self._attr_unique_id = f"beurer_cosynight_{device.id}_{name.lower().replace(' ', '_')}"
         self._attr_extra_state_attributes = {}
+        self._config_entry_id = config_entry_id
 
     @property
     def device_info(self) -> DeviceInfo:
@@ -129,26 +130,6 @@ class _Zone(SelectEntity):
     def options(self):
         return [str(x) for x in range(0, 10)]
 
-    async def async_update(self) -> None:
-        """Update the entity (async)."""
-        self._status = await self._hass.async_add_executor_job(
-            self._hub.get_status, self._device.id
-        )
-        # Update last_updated timestamp
-        self._attr_extra_state_attributes["last_updated"] = datetime.now().isoformat()
-
-    def update(self) -> None:
-        """Synchronous update - no-op for now."""
-        # This is called by Home Assistant, but we use async_update instead
-        pass
-
-
-class BodyZone(_Zone):
-
-    def __init__(self, hub, device, hass, config_entry_id=None):
-        super().__init__(hub, device, 'Body Zone', hass)
-        self._config_entry_id = config_entry_id
-
     def _get_timer_value(self) -> float:
         """Get timer value from the number entity if available."""
         if self._config_entry_id:
@@ -159,6 +140,25 @@ class BodyZone(_Zone):
                 if hasattr(entity, '_attr_unique_id') and '_timer' in entity._attr_unique_id:
                     return entity.native_value
         return 1.0  # Default 1 hour
+
+    async def async_update(self) -> None:
+        """Update the entity (async)."""
+        self._status = await self._hass.async_add_executor_job(
+            self._hub.get_status, self._device.id
+        )
+        # Update last_updated timestamp
+        self._attr_extra_state_attributes["last_updated"] = dt_util.now().isoformat()
+
+    def update(self) -> None:
+        """Synchronous update - no-op for now."""
+        # This is called by Home Assistant, but we use async_update instead
+        pass
+
+
+class BodyZone(_Zone):
+
+    def __init__(self, hub, device, hass, config_entry_id=None):
+        super().__init__(hub, device, 'Body Zone', hass, config_entry_id)
 
     @property
     def current_option(self):
@@ -188,19 +188,7 @@ class BodyZone(_Zone):
 class FeetZone(_Zone):
 
     def __init__(self, hub, device, hass, config_entry_id=None):
-        super().__init__(hub, device, 'Feet Zone', hass)
-        self._config_entry_id = config_entry_id
-
-    def _get_timer_value(self) -> float:
-        """Get timer value from the number entity if available."""
-        if self._config_entry_id:
-            entities_key = f"{self._config_entry_id}_entities"
-            device_entities = self._hass.data.get(DOMAIN, {}).get(entities_key, {}).get(self._device.id, [])
-            for entity in device_entities:
-                # Look for the DurationTimer entity by checking unique_id
-                if hasattr(entity, '_attr_unique_id') and '_timer' in entity._attr_unique_id:
-                    return entity.native_value
-        return 1.0  # Default 1 hour
+        super().__init__(hub, device, 'Feet Zone', hass, config_entry_id)
 
     @property
     def current_option(self):

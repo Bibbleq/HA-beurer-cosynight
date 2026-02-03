@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime
 
 from . import beurer_cosynight
 from .const import DOMAIN
@@ -13,6 +12,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.device_registry import DeviceInfo
+from homeassistant.util import dt as dt_util
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -84,7 +84,7 @@ class DurationTimer(NumberEntity):
         self._attr_name = "Duration"
         self._attr_unique_id = f"beurer_cosynight_{device.id}_timer"
         self._attr_native_value = 1.0  # Default 1 hour
-        self._attr_extra_state_attributes = {"last_updated": datetime.now().isoformat()}
+        self._attr_extra_state_attributes = {"last_updated": dt_util.now().isoformat()}
 
     @property
     def device_info(self) -> DeviceInfo:
@@ -126,7 +126,7 @@ class DurationTimer(NumberEntity):
             await self._hass.async_add_executor_job(self._hub.quickstart, qs)
             
             # Update last_updated timestamp
-            self._attr_extra_state_attributes["last_updated"] = datetime.now().isoformat()
+            self._attr_extra_state_attributes["last_updated"] = dt_util.now().isoformat()
             
             _LOGGER.info(
                 "Timer set to %.1f hours (%d seconds) and applied to device %s",

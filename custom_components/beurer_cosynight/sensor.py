@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime
 
 from . import beurer_cosynight
 from .const import DOMAIN
@@ -13,6 +12,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.device_registry import DeviceInfo
+from homeassistant.util import dt as dt_util
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -128,7 +128,7 @@ class DeviceTimer(SensorEntity):
                 self._hub.get_status, self._device.id
             )
             # Update last_updated timestamp
-            self._attr_extra_state_attributes["last_updated"] = datetime.now().isoformat()
+            self._attr_extra_state_attributes["last_updated"] = dt_util.now().isoformat()
         except Exception as e:
             _LOGGER.error("Failed to update device timer for %s: %s", self._device.name, e)
 
@@ -175,7 +175,7 @@ class LastUpdatedSensor(SensorEntity):
                 self._hub.get_status, self._device.id
             )
             # Update timestamp on successful fetch
-            self._last_updated = datetime.now()
+            self._last_updated = dt_util.now()
         except Exception as e:
             _LOGGER.error("Failed to update last_updated sensor for %s: %s", self._device.name, e)
 
