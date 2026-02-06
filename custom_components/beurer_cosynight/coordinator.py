@@ -2,11 +2,12 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, time, timedelta
+from datetime import time, timedelta
 from typing import Any
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+from homeassistant.util import dt as dt_util
 
 from .const import (
     DOMAIN,
@@ -41,7 +42,7 @@ class BeurerCoordinator(DataUpdateCoordinator):
         self.config_entry = config_entry
         
         # Track when commands are sent to trigger aggressive polling
-        self._last_command_time: datetime | None = None
+        self._last_command_time = None
         self._active_polling_enabled = False
         
         # Get configuration options with defaults
@@ -110,7 +111,7 @@ class BeurerCoordinator(DataUpdateCoordinator):
         if not self._last_command_time:
             return timedelta(seconds=60)
         
-        time_since_command = datetime.now() - self._last_command_time
+        time_since_command = dt_util.now() - self._last_command_time
         
         # Progressive intervals: 15s (first minute) → 30s (1-5 minutes) → 60s (after 5 minutes)
         if time_since_command < timedelta(minutes=1):
@@ -122,7 +123,7 @@ class BeurerCoordinator(DataUpdateCoordinator):
 
     def _calculate_update_interval(self) -> timedelta:
         """Calculate the appropriate update interval based on current state."""
-        now = datetime.now()
+        now = dt_util.now()
         current_time = now.time()
         
         # Check if any blanket is active
@@ -196,7 +197,7 @@ class BeurerCoordinator(DataUpdateCoordinator):
 
     def notify_command_sent(self) -> None:
         """Notify coordinator that a command was sent to trigger active polling."""
-        self._last_command_time = datetime.now()
+        self._last_command_time = dt_util.now()
         _LOGGER.debug("Command sent, triggering active polling mode")
         
         # Force an immediate update to get fresh status
