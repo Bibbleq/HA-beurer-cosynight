@@ -135,7 +135,7 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
 
     def __init__(self, config_entry):
         """Initialize options flow."""
-        self.config_entry = config_entry
+        self._config_entry = config_entry
 
     async def async_step_init(self, user_input=None) -> FlowResult:
         """Manage the polling options."""
@@ -143,7 +143,7 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
             return self.async_create_entry(title="", data=user_input)
 
         # Get current options or use defaults
-        current_options = self.config_entry.options
+        current_options = self._config_entry.options
         
         data_schema = vol.Schema(
             {
