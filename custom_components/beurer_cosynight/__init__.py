@@ -7,6 +7,7 @@ from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant
 from .const import DOMAIN
 from . import beurer_cosynight
+from .coordinator import BeurerCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -34,15 +35,43 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         _LOGGER.error("Authentication failed: %s", e)
         return False
     
-    # Store shared hub instance
+    # Get list of devices
+    def list_devices():
+        return hub.list_devices()
+    
+    try:
+        devices = await hass.async_add_executor_job(list_devices)
+    except Exception as e:
+        _LOGGER.error("Failed to list devices: %s", e)
+        return False
+    
+    # Create coordinator
+    coordinator = BeurerCoordinator(hass, hub, devices, entry)
+    
+    # Fetch initial data
+    await coordinator.async_config_entry_first_refresh()
+    
+    # Store shared hub instance and coordinator
     hass.data.setdefault(DOMAIN, {})
-    hass.data[DOMAIN][entry.entry_id] = {"hub": hub}
+    hass.data[DOMAIN][entry.entry_id] = {
+        "hub": hub,
+        "coordinator": coordinator,
+        "devices": devices,
+    }
+    
+    # Register update listener for options flow
+    entry.async_on_unload(entry.add_update_listener(async_reload_entry))
     
     await hass.config_entries.async_forward_entry_setups(
         entry, PLATFORMS
     )
     
     return True
+
+
+async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Reload config entry when options change."""
+    await hass.config_entries.async_reload(entry.entry_id)
 
 
 async def async_unload_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:

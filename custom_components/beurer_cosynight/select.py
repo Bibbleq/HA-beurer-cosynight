@@ -16,6 +16,7 @@ from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.util import dt as dt_util
+from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -31,37 +32,31 @@ async def async_setup_entry(
     add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up select entities from a config entry."""
-    # Get shared hub instance
-    hub = hass.data[DOMAIN][config_entry.entry_id]["hub"]
+    # Get coordinator and devices
+    coordinator = hass.data[DOMAIN][config_entry.entry_id]["coordinator"]
+    devices = hass.data[DOMAIN][config_entry.entry_id]["devices"]
     
-    def list_devs():
-        return hub.list_devices()
+    if not devices:
+        _LOGGER.warning("No devices found for Beurer CosyNight")
+        return
     
-    try:
-        devices = await hass.async_add_executor_job(list_devs)
-        if not devices:
-            _LOGGER.warning("No devices found for Beurer CosyNight")
-            return
+    # Initialize entity storage for RefreshButton coordination
+    entities_key = f"{config_entry.entry_id}_entities"
+    hass.data[DOMAIN].setdefault(entities_key, {})
+    
+    entities = []
+    for d in devices:
+        body_zone = BodyZone(coordinator, d, hass, config_entry.entry_id)
+        feet_zone = FeetZone(coordinator, d, hass, config_entry.entry_id)
         
-        # Initialize entity storage for RefreshButton coordination
-        entities_key = f"{config_entry.entry_id}_entities"
-        hass.data[DOMAIN].setdefault(entities_key, {})
+        entities.append(body_zone)
+        entities.append(feet_zone)
         
-        entities = []
-        for d in devices:
-            body_zone = BodyZone(hub, d, hass, config_entry.entry_id)
-            feet_zone = FeetZone(hub, d, hass, config_entry.entry_id)
-            
-            entities.append(body_zone)
-            entities.append(feet_zone)
-            
-            # Store entity references for RefreshButton
-            hass.data[DOMAIN][entities_key].setdefault(d.id, []).extend([body_zone, feet_zone])
-        
-        add_entities(entities)
-        _LOGGER.info("Added %d select entities for Beurer CosyNight", len(entities))
-    except Exception as e:
-        _LOGGER.error("Failed to list devices from Beurer CosyNight: %s", e)
+        # Store entity references for RefreshButton
+        hass.data[DOMAIN][entities_key].setdefault(d.id, []).extend([body_zone, feet_zone])
+    
+    add_entities(entities)
+    _LOGGER.info("Added %d select entities for Beurer CosyNight", len(entities))
 
 
 def setup_platform(
@@ -88,19 +83,18 @@ def setup_platform(
     add_entities(entities)
 
 
-class _Zone(SelectEntity):
+class _Zone(CoordinatorEntity, SelectEntity):
 
     _attr_has_entity_name = True
 
-    def __init__(self, hub, device, name, hass, config_entry_id=None) -> None:
-        self._hub = hub
-        self._hass = hass
+    def __init__(self, coordinator, device, name, hass, config_entry_id=None) -> None:
+        """Initialize the select entity."""
+        super().__init__(coordinator)
         self._device = device
         self._attr_name = name
-        self._status = None
         self._attr_unique_id = f"beurer_cosynight_{device.id}_{name.lower().replace(' ', '_')}"
-        self._attr_extra_state_attributes = {}
         self._config_entry_id = config_entry_id
+        self._hass = hass
         self._attr_available = True
 
     @property
@@ -139,39 +133,23 @@ class _Zone(SelectEntity):
                     return default_timer
         return default_timer
 
-    async def async_update(self) -> None:
-        """Update the entity (async)."""
-        try:
-            self._status = await self._hass.async_add_executor_job(
-                self._hub.get_status, self._device.id
-            )
-            # Update last_updated timestamp
-            self._attr_extra_state_attributes["last_updated"] = dt_util.now().isoformat()
-            self._attr_available = True
-        except Exception as e:
-            _LOGGER.error("Failed to update zone for %s: %s", self._device.name, e)
-
-    def update(self) -> None:
-        """Synchronous update - no-op for now."""
-        # This is called by Home Assistant, but we use async_update instead
-        pass
-
 
 class BodyZone(_Zone):
 
-    def __init__(self, hub, device, hass, config_entry_id=None):
-        super().__init__(hub, device, 'Body Zone', hass, config_entry_id)
+    def __init__(self, coordinator, device, hass, config_entry_id=None):
+        super().__init__(coordinator, device, 'Body Zone', hass, config_entry_id)
 
     @property
     def current_option(self):
-        if self._status is None:
+        status = self.coordinator.data.get(self._device.id)
+        if status is None:
             return "0"
-        return str(self._status.bodySetting)
+        return str(status.bodySetting)
 
     async def async_select_option(self, option: str) -> None:
         """Update the body zone setting."""
-        await self.async_update()
-        if self._status is None:
+        status = self.coordinator.data.get(self._device.id)
+        if status is None:
             return
         
         # Get duration from timer entity if available (timer is now in hours)
@@ -180,12 +158,14 @@ class BodyZone(_Zone):
         
         qs = beurer_cosynight.Quickstart(
             bodySetting=int(option),
-            feetSetting=self._status.feetSetting,
-            id=self._status.id,
+            feetSetting=status.feetSetting,
+            id=status.id,
             timespan=timespan
         )
         try:
-            await self._hass.async_add_executor_job(self._hub.quickstart, qs)
+            await self._hass.async_add_executor_job(self.coordinator.hub.quickstart, qs)
+            # Notify coordinator that a command was sent
+            self.coordinator.notify_command_sent()
         except Exception as e:
             _LOGGER.error("Failed to set body zone for %s: %s", self._device.name, e)
             raise
@@ -193,19 +173,20 @@ class BodyZone(_Zone):
 
 class FeetZone(_Zone):
 
-    def __init__(self, hub, device, hass, config_entry_id=None):
-        super().__init__(hub, device, 'Feet Zone', hass, config_entry_id)
+    def __init__(self, coordinator, device, hass, config_entry_id=None):
+        super().__init__(coordinator, device, 'Feet Zone', hass, config_entry_id)
 
     @property
     def current_option(self):
-        if self._status is None:
+        status = self.coordinator.data.get(self._device.id)
+        if status is None:
             return "0"
-        return str(self._status.feetSetting)
+        return str(status.feetSetting)
 
     async def async_select_option(self, option: str) -> None:
         """Update the feet zone setting."""
-        await self.async_update()
-        if self._status is None:
+        status = self.coordinator.data.get(self._device.id)
+        if status is None:
             return
         
         # Get duration from timer entity if available (timer is now in hours)
@@ -213,13 +194,15 @@ class FeetZone(_Zone):
         timespan = int(timer_hours * 3600)  # Convert hours to seconds
         
         qs = beurer_cosynight.Quickstart(
-            bodySetting=self._status.bodySetting,
+            bodySetting=status.bodySetting,
             feetSetting=int(option),
-            id=self._status.id,
+            id=status.id,
             timespan=timespan
         )
         try:
-            await self._hass.async_add_executor_job(self._hub.quickstart, qs)
+            await self._hass.async_add_executor_job(self.coordinator.hub.quickstart, qs)
+            # Notify coordinator that a command was sent
+            self.coordinator.notify_command_sent()
         except Exception as e:
             _LOGGER.error("Failed to set feet zone for %s: %s", self._device.name, e)
             raise
