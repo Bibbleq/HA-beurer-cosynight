@@ -39,6 +39,32 @@ Home Assistant integration for Beurer CosyNight heated mattress cover with devic
 
 Setup is done entirely through the Home Assistant GUI. No YAML configuration is required.
 
+### Configuring Polling Behavior (Optional)
+
+After adding the integration, you can configure the polling behavior via the integration's options:
+
+1. Go to **Settings → Devices & Services**
+2. Find the Beurer CosyNight integration
+3. Click **Configure** (three dots menu)
+4. Adjust the following settings:
+   - **Peak Hours Start/End**: Define when the blanket is likely to be used (default: 20:00 to 08:00)
+   - **Off-Peak Interval**: How often to poll when outside peak hours and blanket is inactive (default: 10 minutes)
+   - **Peak Interval**: How often to poll during peak hours when blanket is inactive (default: 5 minutes)
+   - **Active Blanket Polling**: Enable/disable aggressive polling when blanket is actively heating (default: enabled)
+
+### Polling Strategy
+
+The integration uses an intelligent three-tier polling strategy to reduce API calls while maintaining responsiveness:
+
+1. **Tier 1 - Off-Peak Hours**: Polls every 10 minutes (configurable) when outside peak hours and blanket is inactive
+2. **Tier 2 - Peak Hours**: Polls every 5 minutes (configurable) during peak hours when blanket is inactive
+3. **Tier 3 - Active Blanket**: Uses progressive polling when blanket is actively heating:
+   - 15 seconds for the first minute after a command
+   - 30 seconds for minutes 1-5
+   - 60 seconds thereafter until blanket turns off
+
+This dramatically reduces API calls from every 30 seconds to much longer intervals during idle periods, while maintaining responsiveness when the blanket is in use.
+
 ## Example Lovelace Card
 
 See [beurer-card-example.yaml](beurer-card-example.yaml) for an example Lovelace card configuration.
@@ -49,6 +75,14 @@ This integration is a fork and derivative work, building upon the contributions 
 
 - **Original Author**: [Damon Kohler](https://github.com/damonkohler) - [home-assistant-beurer-cosynight](https://github.com/damonkohler/home-assistant-beurer-cosynight)
 - **GUI Setup & Timer Controls**: [Mpercy-Git](https://github.com/Mpercy-Git) - [home-assistant-beurer-cosynight](https://github.com/Mpercy-Git/home-assistant-beurer-cosynight)
+
+### What's New in v3.0.0
+- **Intelligent Polling**: DataUpdateCoordinator with three-tier polling strategy dramatically reduces API calls
+- **Configurable Intervals**: User-configurable polling intervals for off-peak, peak, and active states
+- **Peak Hours Configuration**: Define when the blanket is most likely to be used
+- **Active Blanket Detection**: Automatically increases polling frequency when blanket is actively heating
+- **Options Flow**: Easy configuration through Home Assistant UI
+- **Backward Compatible**: Existing installations work with sensible defaults
 
 ### What's New in v2.1.0
 - **Flexible Timer Slider**: Duration control now uses a slider allowing custom values from 0.5 to 12 hours in 0.5-hour increments

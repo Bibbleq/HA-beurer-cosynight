@@ -13,6 +13,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.util import dt as dt_util
+from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -23,37 +24,31 @@ async def async_setup_entry(
     add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up number entities from a config entry."""
-    # Get shared hub instance
-    hub = hass.data[DOMAIN][config_entry.entry_id]["hub"]
+    # Get coordinator and devices
+    coordinator = hass.data[DOMAIN][config_entry.entry_id]["coordinator"]
+    devices = hass.data[DOMAIN][config_entry.entry_id]["devices"]
     
-    def list_devs():
-        return hub.list_devices()
+    if not devices:
+        _LOGGER.warning("No devices found for Beurer CosyNight")
+        return
     
-    try:
-        devices = await hass.async_add_executor_job(list_devs)
-        if not devices:
-            _LOGGER.warning("No devices found for Beurer CosyNight")
-            return
+    # Initialize entity storage for coordination
+    entities_key = f"{config_entry.entry_id}_entities"
+    hass.data[DOMAIN].setdefault(entities_key, {})
+    
+    entities = []
+    for d in devices:
+        duration_timer = DurationTimer(coordinator, d, hass)
+        entities.append(duration_timer)
         
-        # Initialize entity storage for coordination
-        entities_key = f"{config_entry.entry_id}_entities"
-        hass.data[DOMAIN].setdefault(entities_key, {})
-        
-        entities = []
-        for d in devices:
-            duration_timer = DurationTimer(hub, d, hass)
-            entities.append(duration_timer)
-            
-            # Store entity reference for coordination with other entities
-            hass.data[DOMAIN][entities_key].setdefault(d.id, []).append(duration_timer)
-        
-        add_entities(entities)
-        _LOGGER.info("Added %d number entities for Beurer CosyNight", len(entities))
-    except Exception as e:
-        _LOGGER.error("Failed to list devices from Beurer CosyNight: %s", e)
+        # Store entity reference for coordination with other entities
+        hass.data[DOMAIN][entities_key].setdefault(d.id, []).append(duration_timer)
+    
+    add_entities(entities)
+    _LOGGER.info("Added %d number entities for Beurer CosyNight", len(entities))
 
 
-class DurationTimer(NumberEntity):
+class DurationTimer(CoordinatorEntity, NumberEntity):
     """Timer duration number entity (slider in hours)."""
 
     _attr_has_entity_name = True
@@ -63,14 +58,14 @@ class DurationTimer(NumberEntity):
     _attr_native_unit_of_measurement = UnitOfTime.HOURS
     _attr_mode = NumberMode.SLIDER
 
-    def __init__(self, hub, device, hass) -> None:
-        self._hub = hub
-        self._hass = hass
+    def __init__(self, coordinator, device, hass) -> None:
+        """Initialize the number entity."""
+        super().__init__(coordinator)
         self._device = device
+        self._hass = hass
         self._attr_name = "Duration"
         self._attr_unique_id = f"beurer_cosynight_{device.id}_timer"
         self._attr_native_value = 1.0  # Default 1 hour
-        self._attr_extra_state_attributes = {"last_updated": dt_util.now().isoformat()}
         self._attr_available = True
 
     @property
@@ -95,12 +90,13 @@ class DurationTimer(NumberEntity):
         # Convert hours to seconds
         timespan = int(value * 3600)
         
-        # Get current device status
+        # Get current device status from coordinator
+        status = self.coordinator.data.get(self._device.id)
+        if status is None:
+            _LOGGER.error("No status available for device %s", self._device.id)
+            return
+        
         try:
-            status = await self._hass.async_add_executor_job(
-                self._hub.get_status, self._device.id
-            )
-            
             # Create quickstart command with current zone values and new timer
             qs = beurer_cosynight.Quickstart(
                 bodySetting=status.bodySetting,
@@ -110,10 +106,11 @@ class DurationTimer(NumberEntity):
             )
             
             # Send the quickstart command
-            await self._hass.async_add_executor_job(self._hub.quickstart, qs)
+            await self._hass.async_add_executor_job(self.coordinator.hub.quickstart, qs)
             
-            # Update last_updated timestamp
-            self._attr_extra_state_attributes["last_updated"] = dt_util.now().isoformat()
+            # Notify coordinator that a command was sent
+            self.coordinator.notify_command_sent()
+            
             self._attr_available = True
             
             _LOGGER.info(
@@ -123,7 +120,3 @@ class DurationTimer(NumberEntity):
         except Exception as e:
             _LOGGER.error("Failed to apply timer change: %s", e)
             raise
-
-    def update(self) -> None:
-        """Update - no-op for timer."""
-        pass
