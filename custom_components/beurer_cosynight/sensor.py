@@ -130,5 +130,13 @@ class LastUpdatedSensor(CoordinatorEntity, SensorEntity):
     @property
     def native_value(self):
         """Return the last updated timestamp."""
-        # Try to use internal _last_update_success_time if available, otherwise use current time
-        return getattr(self.coordinator, '_last_update_success_time', None) or (dt_util.now() if self.coordinator.last_update_success else None)
+        # Try to use internal _last_update_success_time if available
+        last_update_time = getattr(self.coordinator, '_last_update_success_time', None)
+        if last_update_time is not None:
+            return last_update_time
+        
+        # Fallback: return current time if coordinator has successful data
+        if self.coordinator.last_update_success:
+            return dt_util.now()
+        
+        return None
